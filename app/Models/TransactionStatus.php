@@ -13,7 +13,8 @@ class TransactionStatus extends Model
     protected $fillable = [
         'TransacStatus_ID ',
         'Transac_ID',
-        'Transac_status',
+        // 'Transac_status',
+        'TransacStatus_name',
         'TransacStatus_datetime'
     ];
 }

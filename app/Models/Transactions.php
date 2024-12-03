@@ -16,7 +16,7 @@ class Transactions extends Model
         'Admin_ID',
         'Transac_date',
         'Transac_status',
-        'Trackin_number',
+        'Tracking_number',
         'Received_datetime',
         'Released_datetime'
     ];
