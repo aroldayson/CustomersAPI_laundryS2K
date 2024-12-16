@@ -33,17 +33,17 @@ class CustomerController extends Controller
             'password'=> 'required'
         ]);
 
-      // Find the user by email
-    $user = Customers::where('Cust_email', $request->email)->first();
+        // Find the user by email
+        $user = Customers::where('Cust_email', $request->email)->first();
 
-    // Check if the user exists and verify the password
-    if (!$user || !Hash::check($request->password, $user->Cust_password)) {
-        return response()->json(['message' => 'The provided credentials are incorrect'], 401);
-    }
+        // Check if the user exists and verify the password
+        if (!$user || !Hash::check($request->password, $user->Cust_password)) {
+            return response()->json(['message' => 'The provided credentials are incorrect'], 401);
+        }
 
-    // Generate a token for the authenticated user
-    $custid = $user->Cust_ID;
-    $token = $user->createToken($user->Cust_lname);
+        // Generate a token for the authenticated user
+        $custid = $user->Cust_ID;
+        $token = $user->createToken($user->Cust_lname);
         return [
             'user'=>$user,
             'userid'=>$custid,
@@ -115,47 +115,47 @@ class CustomerController extends Controller
     public function gethis($id) 
     {
         Log::info('Customer ID:', ['id' => $id]);
-        $temp = DB::table('transactions')
-        
-        ->leftJoin('payments', 'transactions.Transac_ID', '=', 'payments.Transac_ID')
-        ->leftJoin('transaction_details', 'transactions.Transac_ID', '=', 'transaction_details.Transac_ID')
-        ->leftJoin('transaction_status','transactions.Transac_ID', '=', 'transaction_status.Transac_ID')
-        ->leftJoin('additional_services','transactions.Transac_ID','=', 'additional_services.Transac_ID')
-        ->select(
-            'transactions.Transac_ID',
-            'transactions.Tracking_number as trans_tracking_number',
-            'transactions.Cust_ID',
-            'transactions.Tracking_number',
-            'transactions.Transac_datetime',
-            'transactions.Transac_datetime',
-            'transaction_status.TransacStatus_name',
-            'additional_services.Addservice_name',
-            DB::raw('COALESCE(CAST(payments.amount AS CHAR), "No Payment") as payment_amount'),
-            DB::raw('COALESCE(payments.Mode_of_Payment, "No Mode of Payment") as Mode_of_Payment'),
-            // DB::raw('IF(transaction_details.Transac_ID IS NULL, "Cancelled", transactions.Transac_status) as service')
-        )
-        ->where('transactions.Cust_ID', $id)
-      
-        // Exclude rows where both payments.amount and payments.Mode_of_Payment are NULL
-        // ->where(function($query) {
-        //     $query->whereNotNull('payments.amount')
-        //           ->orWhereNotNull('payments.Mode_of_Payment');
-        // })
-        ->groupBy(
-            'transactions.Transac_ID',
-            'transactions.Cust_ID',
-            'transactions.Tracking_number',
-            'transactions.Transac_datetime',
-            'trans_tracking_number',
-            'payment_amount',
-            'Mode_of_Payment',
-            'transaction_status.TransacStatus_name',
-            'additional_services.Addservice_name'
-        )
-        ->get();
 
-      
-        return $temp;
+        $temp = DB::table('transactions')
+            ->leftJoin('payments', 'transactions.Transac_ID', '=', 'payments.Transac_ID')
+            ->leftJoin('transaction_details', 'transactions.Transac_ID', '=', 'transaction_details.Transac_ID')
+            ->leftJoin('transaction_status', 'transactions.Transac_ID', '=', 'transaction_status.Transac_ID')
+            ->leftJoin('additional_services', 'transactions.Transac_ID', '=', 'additional_services.Transac_ID')
+            ->select(
+                'transactions.Transac_ID',
+                'transactions.Tracking_number as trans_tracking_number',
+                'transactions.Cust_ID',
+                // 'transactions.Tracking_number',
+                'transactions.Transac_datetime',
+                DB::raw("(SELECT TransacStatus_name
+                                FROM transaction_status AS ts
+                                WHERE ts.Transac_ID = transactions.Transac_ID
+                                AND ts.TransacStatus_datetime = (SELECT MAX(TransacStatus_datetime)
+                                                    FROM transaction_status
+                                                    WHERE Transac_ID = transactions.Transac_ID)
+                                LIMIT 1) AS latest_transac_status"),
+                DB::raw('GROUP_CONCAT(DISTINCT additional_services.Addservice_name SEPARATOR ", ") as Addservice_name'),  
+                // DB::raw('MAX(transaction_status.TransacStatus_name) as TransacStatus_name'),  // Ensure distinct TransacStatus_name
+                // 'additional_services.Addservice_name',
+                DB::raw('COALESCE(CAST(payments.amount AS CHAR), "No Payment") as payment_amount'),
+                DB::raw('COALESCE(payments.Mode_of_Payment, "No Mode of Payment") as Mode_of_Payment')
+            )
+            ->where('transactions.Cust_ID', $id)
+            ->groupBy(
+                DB::raw('latest_transac_status'),
+                'transactions.Transac_ID',
+                'transactions.Cust_ID',
+                // 'transactions.Tracking_number',
+                'transactions.Transac_datetime',
+                // 'additional_services.Addservice_name',  // Add Addservice_name to GROUP BY
+                'payment_amount',
+                'Mode_of_Payment'
+            )
+            ->get();
+        
+        return response()->json($temp, 200);
+        
+        
     }
     
     public function getlist()
@@ -163,26 +163,31 @@ class CustomerController extends Controller
         // $temp = DB::table('laundry_categorys')
         //         ->get();
 
-        return response()->json(Laundrycategories::orderBy('Price','asc')->get(), 200);
+        return response()->json(Laundrycategories::orderBy('Categ_ID','asc')->get(), 200);
 
         // return $temp;
     }
     
     public function updatetrans(Request $request)
     {
-        // Adjust validation to handle updates and newEntries correctly
+        // Validate incoming data
         $validatedData = $request->validate([
             'updates.*.Categ_ID' => 'required|integer',           // Validate each Categ_ID in the updates array
             'updates.*.Qty' => 'required|integer',                // Validate each Qty in the updates array
             'updates.*.TransacDet_ID' => 'required|integer',      // Validate each TransacDet_ID in the updates array
             'updates.*.Transac_status' => 'required|string',      // Validate each Transac_status in the updates array
             'updates.*.Transac_ID' => 'required|integer',
-            'updates.*.Addservice_name' => 'required|string',
-            
-    
+
+            'addservices.*.Transac_ID' => 'required',
+            'addservices.*.Addservices_name' => 'required|string',     // Ensure service name is present in updates
+            // 'addservices.*.Remove_Addservices' => 'string',
+
             'newEntries.*.Categ_ID' => 'required|integer',        // Validate each Categ_ID in newEntries array
             'newEntries.*.Qty' => 'required|integer',             // Validate each Qty in newEntries array
             'newEntries.*.Tracking_number' => 'required|string',  // Validate each Tracking_number in newEntries array
+            
+            'removed_services' => 'nullable|array',               // Handle removed services (optional)
+            'removed_services.*' => 'nullable|string',            // Validate each removed service as a string
         ]);
     
         try {
@@ -197,12 +202,12 @@ class CustomerController extends Controller
                         ->update([
                             'Categ_ID' => $data['Categ_ID'],
                             'Qty' => $data['Qty'],
-                            'Transac_ID' => $data['Transac_ID']
+                            'Transac_ID' => $data['Transac_ID'],
                         ]);
     
-                    // Fetch the Tracking_number from transaction_details
+                    // Fetch the Tracking_number from transactions table
                     $trackingNumber = DB::table('transactions')
-                        ->where('Transac_ID', $data['TransacDet_ID'])
+                        ->where('Transac_ID', $data['Transac_ID'])
                         ->value('Tracking_number');
     
                     // Update the transactions table
@@ -212,16 +217,36 @@ class CustomerController extends Controller
                             'Transac_ID' => $data['Transac_ID'],
                             'TransacStatus_name' => $data['Transac_status'],
                         ]);
-
-                    DB::table('additional_services')
-                        ->where('Transac_ID',$data['Transac_ID'])
-                        ->update([
-                            'AddService_name' => $data['Addservice_name']
-                        ]);
+                    // Update the additional services table
                 }
             }
+
+            if (!empty($validatedData['addservices'])) {
+                $remServ = (['addservices.*.Remove_Addservices']);
+                foreach ($validatedData['addservices'] as $data) {
+                    
+                    DB::table('additional_services')
+                    ->updateOrInsert(
+                        [
+                            'Transac_ID' => $data['Transac_ID'],       // Match the Transac_ID
+                            'AddService_name' => $data['Addservices_name'], // Match the AddService_name
+                        ],
+                        [
+                            'AddService_name' => $data['Addservices_name'],  // Set the value for AddService_name
+                        ]
+                    );
+
+                    // foreach ($remServ as $data) {
+                    //     DB::table('additional_services')
+                    //         ->where('Transac_ID', $data['Transac_ID'])          // Match the Transac_ID
+                    //         ->where('AddService_name', $data['Addservices_name']) // Match the AddService_name
+                    //         ->delete(); // Delete the record
+                    // }
+                }
+            }
+            
     
-            // Handle newEntries if present
+            // Handle new entries if present
             if (!empty($validatedData['newEntries'])) {
                 foreach ($validatedData['newEntries'] as $data) {
                     // Insert new transaction details
@@ -229,53 +254,91 @@ class CustomerController extends Controller
                         'Categ_ID' => $data['Categ_ID'],
                         'Qty' => $data['Qty'],
                         'Transac_ID' => $data['Transac_ID'],
+                        'Tracking_number' => $data['Tracking_number'], // Ensure this is included for new entries
                     ]);
                 }
             }
     
+            // Handle removal of services
+            if (!empty($validatedData['removed_services'])) {
+                foreach ($validatedData['removed_services'] as $serviceName) {
+                    // Remove rows from additional_services based on the service name and Transac_ID
+                    DB::table('additional_services')
+                        ->where('Transac_ID', $validatedData['updates'][0]['Transac_ID'])
+                        ->where('AddService_name', $serviceName)
+                        ->delete();
+                }
+            }
+    
+            // Commit the transaction
             DB::commit();
     
-            return response()->json(['message' => 'Transaction updated successfully']);
+            return response()->json(['message' => 'Transaction updated and services removed successfully']);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => 'Error: ' . $e->getMessage()], 500);
         }
     }
+
+
+    public function removeServices(Request $request){
+        $validatedData = $request->validate([
+            'Transac_ID' => 'required',
+            'removed_services' => 'required|array',
+            'removed_services.*' => 'string'
+        ]);
     
+        if(!empty($validatedData['removed_services'])) {
+            foreach ($validatedData['removed_services'] as $serviceName) {
+                DB::table('additional_services')
+                    ->where('Transac_ID', $validatedData['Transac_ID'])
+                    ->where('AddService_name', $serviceName)
+                    ->delete();
+            }
+        }
+    
+        return response()->json(['message' => 'Services removed successfully.']);
+    }
+    
+ 
     public function display($id)
     {
         // Fetch transactions and related data
         $transactions = DB::table('transactions')
-            ->leftJoin('customers', 'transactions.Cust_ID', '=', 'customers.Cust_ID')
-            ->leftJoin('transaction_details', 'transactions.Transac_ID', '=', 'transaction_details.Transac_ID')
-            ->leftJoin('laundry_categories', 'transaction_details.Categ_ID', '=', 'laundry_categories.Categ_ID')
-            ->leftJoin('payments', 'transactions.Transac_ID', '=', 'payments.Transac_ID')
-            ->leftJoin('transaction_status', 'transactions.Transac_ID', '=', 'transaction_status.Transac_ID')
-            ->leftJoin('additional_services', 'transactions.Transac_ID', '=', 'additional_services.Transac_ID')
-            ->select(
-                DB::raw('GROUP_CONCAT(DISTINCT  laundry_categories.Category SEPARATOR ", ") as Category'),
-                DB::raw('MAX(DISTINCT  transaction_status.TransacStatus_name) as trans_stat'), // Get only the first status
-                'customers.Cust_fname as fname',
-                'customers.Cust_lname as lname',
-                DB::raw('SUM(DISTINCT transaction_details.Qty) as totalQty'),
-                DB::raw('SUM(DISTINCT transaction_details.Weight) as totalWeight'),
-                DB::raw('SUM(DISTINCT transaction_details.Price) as totalprice'),
-                'transactions.Tracking_number as track_num',
-                'transactions.Transac_datetime as trans_date',
-                'transactions.Transac_ID as trans_ID',
-                'additional_services.Addservice_name'
-            )
-            ->where('transactions.Cust_ID', $id)
-            ->groupBy(
-                'customers.Cust_fname',
-                'customers.Cust_lname',
-                'transactions.Tracking_number',
-                'transactions.Transac_datetime',
-                'transactions.Transac_ID',
-                'additional_services.Addservice_name'
-            )
-            ->orderBy(DB::raw('RIGHT(transactions.Tracking_number, 6)'),'asc')
-            ->get();
+        ->leftJoin('customers', 'transactions.Cust_ID', '=', 'customers.Cust_ID')
+        ->leftJoin('transaction_details as td', 'transactions.Transac_ID', '=', 'td.Transac_ID')
+        ->leftJoin('laundry_categories as lc', 'td.Categ_ID', '=', 'lc.Categ_ID')
+        ->leftJoin('payments', 'transactions.Transac_ID', '=', 'payments.Transac_ID')
+        ->leftJoin('transaction_status', 'transactions.Transac_ID', '=', 'transaction_status.Transac_ID')
+        ->leftJoin('additional_services', 'transactions.Transac_ID', '=', 'additional_services.Transac_ID')
+        ->leftJoin('customer_address', 'transactions.Cust_ID', '=', 'customer_address.Cust_ID')
+        ->select(
+            DB::raw('GROUP_CONCAT(DISTINCT lc.Category SEPARATOR ", ") as Category'),
+            DB::raw('MIN(DISTINCT transaction_status.TransacStatus_name) as trans_stat'), // Get only the first status
+            'customers.Cust_fname as fname',
+            'customers.Cust_lname as lname',
+            DB::raw('SUM(td.Qty) as totalQty'),
+            DB::raw('SUM(DISTINCT td.Weight) as totalWeight'),
+            DB::raw('SUM(DISTINCT td.Price) as totalprice'),
+            DB::raw('SUM(lc.Price * lc.Minimum_weight) as calculatedTotalPrice'), // Total price calculation
+            'transactions.Tracking_number as track_num',
+            'transactions.Transac_datetime as trans_date',
+            'transactions.Transac_ID as trans_ID',
+            DB::raw('GROUP_CONCAT(DISTINCT additional_services.Addservice_name SEPARATOR ", ") as Addservice_name'),
+            DB::raw('DATE_ADD(transactions.Transac_datetime, INTERVAL 4 DAY) as estimated_date')
+        )
+        ->where('transactions.Cust_ID', $id)
+        ->groupBy(
+            'customers.Cust_fname',
+            'customers.Cust_lname',
+            'transactions.Tracking_number',
+            'transactions.Transac_datetime',
+            'transactions.Transac_ID',
+            
+        )
+        ->orderBy(DB::raw('RIGHT(transactions.Tracking_number, 6)'), 'asc')
+        ->get();
+    
     
         // Check if Category is empty, then delete the corresponding transaction
         foreach ($transactions as $transaction) {
@@ -289,21 +352,27 @@ class CustomerController extends Controller
             }
         }
     
-        // Fetch the selected service
-        $selectedservice = DB::table('additional_services')
-            ->where('Transac_ID', $id) // Replace 'id' with the correct variable for the transaction ID
-            ->select('Addservice_name')
-            ->first(); // Get a single result
+        // Fetch the selected service (No need to fetch this separately as we are already aggregating them above)
+        // $selectedservice = DB::table('additional_services')
+        //     ->where('Transac_ID', $id)
+        //     ->select('Addservice_name')
+        //     ->first();
     
         return response()->json([
             'transaction' => $transactions,
-            'Addservice_name' => $selectedservice
+            // 'Addservice_name' => $selectedservice
         ]);
     }
+    
     
 
     public function addtrans(Request $request)
     {
+        // If 'service' is empty, set it to ['none']
+        if (empty($request->service)) {
+            $request->merge(['service' => ['none']]);
+        }
+    
         // Validate the incoming request data
         $request->validate([
             'Cust_ID' => 'required|integer|exists:customers,Cust_ID',
@@ -311,41 +380,33 @@ class CustomerController extends Controller
             'laundry' => 'required|array|min:1',
             'laundry.*.Categ_ID' => 'required|integer',
             'laundry.*.Qty' => 'required|integer',
-            'service' => 'required|string|in:rush,pick,deliver', // Validate service field
+            'service' => 'required|array|min:1',  // Ensure 'service' is an array with at least one element
+            'service.*' => 'in:Rush-Job,PickUp-Service,Delivery-Service,none', // Allow 'none' as a valid value
         ]);
-    
+        
         // Insert into transactions table and get Transac_ID
         $transacId = DB::table('transactions')->insertGetId([
             'Cust_ID' => $request->Cust_ID,
             'Tracking_number' => $request->Tracking_number,
             'Transac_datetime' => now(),
         ]);
-    
+        
         // Insert into transaction_status table
         $transacStatusId = DB::table('transaction_status')->insertGetId([
             'TransacStatus_name' => 'pending',
             'TransacStatus_datetime' => now(),
-            'Transac_ID' => $transacId,  // Specify the value for Transac_ID
-        ]);
-    
-        $servicePrice = null;  // Default to null, but can be adjusted for each service if needed
-    
-        // Set the price for the service if needed (e.g., if rush has a price, you can set it here)
-        if ($request->service === 'rush') {
-            $servicePrice = 20.00;  // Example price for Rush Jobs
-        } elseif ($request->service === 'pick-up') {
-            $servicePrice = 10.00;  // Example price for Pick-up
-        } elseif ($request->service === 'deliver') {
-            $servicePrice = 15.00;  // Example price for Delivery
-        }
-    
-        // Insert the selected service into the additional_services table
-        DB::table('additional_services')->insert([
             'Transac_ID' => $transacId,
-            'AddService_name' => $request->service,
-            'AddService_price' => $servicePrice,  // Insert the service price
         ]);
-    
+        
+        // Insert selected services into the additional_services table
+        foreach ($request->service as $service) {
+            DB::table('additional_services')->insert([
+                'Transac_ID' => $transacId,
+                'AddService_name' => $service,
+                'AddService_price' =>'50'
+            ]);
+        }
+        
         // Prepare transaction details and insert into transaction_details table
         $transactionDetails = [];
         foreach ($request->laundry as $laundryItem) {
@@ -356,7 +417,7 @@ class CustomerController extends Controller
             ];
         }
         DB::table('transaction_details')->insert($transactionDetails);
-    
+        
         // Return the response with transaction and details
         return response()->json(['Transaction' => $transacId, 'Transaction_details' => $transactionDetails], 200);
     }
@@ -368,7 +429,8 @@ class CustomerController extends Controller
         $temp = DB::table('transactions')
             ->leftJoin('transaction_details', 'transactions.Transac_ID', '=', 'transaction_details.Transac_ID')
             ->leftJoin('laundry_categories', 'transaction_details.Categ_ID', '=', 'laundry_categories.Categ_ID')
-            ->select('transactions.*', 'transaction_details.*','laundry_categories.*') // Make sure to select from the correct alias
+            ->leftJoin('additional_services','transactions.Transac_ID', '=', 'additional_services.Transac_ID')
+            ->select('transactions.*', 'transaction_details.*','laundry_categories.*','additional_services.*') // Make sure to select from the correct alias
             ->where('transactions.Tracking_number', $id)
             ->get();
     
@@ -495,8 +557,6 @@ class CustomerController extends Controller
         ]);
     }
 
-
-
     public function insertProofOfPayment($paymentId)
     {
         try {
@@ -516,7 +576,7 @@ class CustomerController extends Controller
                 $filename = time() . '_' . $file->getClientOriginalName();
                 
                 // Store the file in the 'public/receipt' directory
-                $file->storeAs('public/receipt', $filename);
+                $file->storeAs('storage/app/public/receipt', $filename);
                 
                 // Log the filename to ensure it's being uploaded
                 \Log::info('Uploaded file: ' . $filename);
@@ -541,10 +601,6 @@ class CustomerController extends Controller
         }
     }
     
-    
-
-
-
     private function handleImageUpload(Request $request, $trackingNumber)
     {
         // Validate the incoming request
@@ -593,47 +649,68 @@ class CustomerController extends Controller
                 
         return $temp;
     }
-    public function getDetails($id)
+
+    public function getDetails($id) 
     {
+        // Get the main transaction details
         $temp = DB::table('transactions')
             ->where('Transac_ID', $id)
             ->get();
-
+        
+        // Get the transaction statuses (plucking the status and date for optimization)
         $mainTransactionStatus = DB::table('transaction_status')
             ->where('Transac_ID', $id)
             ->orderBy('TransacStatus_datetime', 'asc')
-            ->get();
+            ->get(['TransacStatus_name', 'TransacStatus_datetime']);
+        
+        // Get the services (distinct service names for the transaction)
+        $services = DB::table('additional_services')
+            ->where('Transac_ID', $id)
+            ->distinct() // Ensure unique AddService_name
+            ->pluck('AddService_name'); // Get an array of distinct service names
+        
+        $serviceprice = DB::table('additional_services')
+            ->where('Transac_ID', $id)
+            ->sum('AddService_price');
+        
+        $transactions = [];  // Initialize the array to hold the results
     
-        $transactions = [];
-    
-        foreach($temp as $t){
+        // Loop through each transaction in the 'temp' collection
+        foreach ($temp as $t) {
+            // Get the transaction details with categories
             $transaction_details = DB::table('transaction_details')
-                ->LeftJoin('laundry_categories', 'transaction_details.Categ_ID', '=', 'laundry_categories.Categ_ID')
-                // ->LeftJoin('transaction_status', 'transaction_details.Transac_ID', '=', 'transaction_status.Transac_ID')
+                ->join('laundry_categories', 'transaction_details.Categ_ID', '=', 'laundry_categories.Categ_ID')
                 ->select(
                     'transaction_details.Transac_ID',
                     'transaction_details.TransacDet_ID',
                     'transaction_details.Price as price',
                     'transaction_details.created_at',
+                    'transaction_details.Qty',
+                    'transaction_details.Weight',
                     'laundry_categories.Category',
-                    
-                    // 'transaction_status.Transac_status'
                 )
-                ->where('Transac_ID', $t->Transac_ID)
+                ->where('transaction_details.Transac_ID', $t->Transac_ID)
                 ->get();
+            
+            // Calculate the total sum of prices and total weight
+            $total = $transaction_details->sum('price');
+            $totalweight = $transaction_details->sum('Weight');
+            $totalqty = $transaction_details->sum('Qty');
     
+            // Add the data to the transactions array
             $transactions[] = [
                 'Tracking_number' => $t->Tracking_number,
-                'Transac_status' =>  $mainTransactionStatus,
-                // 'Transac_status' =>  $mainTransactionStatus->Transac_status,
-                // 'Transac_date' =>  $mainTransactionStatus->TransacStatus_datetime,
-                'total' => $transaction_details->sum('price'),
+                'Transac_status' => $mainTransactionStatus,  // Use the status details you fetched
+                'total' => $total,
+                'totalweight' => $totalweight,
                 'details' => $transaction_details,
-                'transac' => $temp
+                'totalserviceprice' => $serviceprice,
+                'services' => $services, // Directly assign the unique services
+                'totalqty' => $totalqty,
             ];
         }
     
-        return $transactions;
+        return $transactions;  // Return the final array of transactions
     }
     
     //account
@@ -673,16 +750,19 @@ class CustomerController extends Controller
             if ($request->hasFile('Proof_filename')) {
                 if ($request->file('Proof_filename')->isValid()) {
                     // Store the uploaded file and get the filename
-                    $filename = $request->file('Proof_filename')->store('profile_images', 'public');
+                    $file = $request->file('Proof_filename');
+                    $filename = time(). '_' . $file->getClientOriginalName();
+                    
+                    $filepath = $file->storeAs('receipt',$filename,'public');
     
                     // Update the proof of payment record with the new filename
                     DB::table('proof_of_payments')
                         ->where('Proof_ID', $proofPayment->Proof_ID)
-                        ->update(['Proof_filename' => $filename]);
+                        ->update(['Proof_filename' => $filepath]);
     
                     return response()->json([
                         'message' => 'Profile image updated successfully',
-                        'image_url' => asset('storage/' . $filename)
+                        'image_url' => asset('receipt/' . $filepath)
                     ], 200);
                 } else {
                     return response()->json(['message' => 'Uploaded file is not valid.'], 400);
@@ -702,75 +782,141 @@ class CustomerController extends Controller
             ], 500);
         }
     }
+
+//     public function updateProfileImage(Request $request, $trackingNumber)
+// {
+//     $request->validate([
+//         'Proof_filename' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+//         'Mode_of_Payment' => 'required|string',
+//         'Amount' => 'required|numeric',
+//         'Cust_ID' => 'required|string'
+//     ]);
+
+//     try {
+//         // Fetch proof of payment details for the given tracking number
+//         $proofPayment = DB::table('transactions')
+//             ->join('payments', 'transactions.Transac_ID', '=', 'payments.Transac_ID')
+//             ->join('proof_of_payments', 'payments.Payment_ID', '=', 'proof_of_payments.Payment_ID')
+//             ->where('transactions.Tracking_number', $trackingNumber)
+//             ->select('payments.*', 'proof_of_payments.*')
+//             ->first();
+
+//         // If no proof of payment is found, create a new payment and proof of payment
+//         if (!$proofPayment) {
+//             $paymentId = $this->insertPayment($trackingNumber, $request->Mode_of_Payment, $request->Amount, $request->Cust_ID);
+//             $proofId = $this->insertProofOfPayment($paymentId);
+
+//             // Get the newly inserted proof of payment record
+//             $proofPayment = DB::table('proof_of_payments')->where('Proof_ID', $proofId)->first();
+
+//             // If still no proof payment is returned, respond with error
+//             if (!$proofPayment) {
+//                 return response()->json(['message' => 'Failed to create proof of payment.'], 400);
+//             }
+//         }
+
+//         // Check if the file is present and is valid
+//         if ($request->hasFile('Proof_filename')) {
+//             if ($request->file('Proof_filename')->isValid()) {
+//                 // Store the uploaded file in 'public/storage/receipt'
+//                 $filename = $request->file('Proof_filename')->store('receipt', 'public');
+
+//                 // Update the proof of payment record with the new filename
+//                 DB::table('proof_of_payments')
+//                     ->where('Proof_ID', $proofPayment->Proof_ID)
+//                     ->update(['Proof_filename' => $filename]);
+
+//                 return response()->json([
+//                     'message' => 'Profile image updated successfully',
+//                     'image_url' => asset('storage/receipt/' . $filename)
+//                 ], 200);
+//             } else {
+//                 return response()->json(['message' => 'Uploaded file is not valid.'], 400);
+//             }
+//         }
+
+//         return response()->json(['message' => 'No image file uploaded'], 400);
+
+//     } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+//         return response()->json([
+//             'message' => 'Transaction, payment, or proof of payment not found for the given tracking number.'
+//         ], 404);
+//     } catch (\Exception $e) {
+//         return response()->json([
+//             'message' => 'An error occurred while updating the profile image.',
+//             'error' => $e->getMessage()
+//         ], 500);
+//     }
+// }
+
     
     
     
     
     public function updateCus(Request $request)
-{
-    // Validate the request (skip Cust_image validation if no file is uploaded)
-    $validationRules = [
-        'Cust_ID' => 'nullable|integer|exists:customers,Cust_ID',
-        'Cust_fname' => 'nullable|string|max:20',
-        'Cust_lname' => 'nullable|string|max:20',
-        'Cust_mname' => 'nullable|string|max:20',
-        'Cust_phoneno' => 'nullable|string',
-        'Cust_address' => 'nullable|string|max:50',
-        'Cust_email' => 'nullable|email|max:50',
-    ];
+    {
+        // Validate the request (skip Cust_image validation if no file is uploaded)
+        $validationRules = [
+            'Cust_ID' => 'nullable|integer|exists:customers,Cust_ID',
+            'Cust_fname' => 'nullable|string|max:20',
+            'Cust_lname' => 'nullable|string|max:20',
+            'Cust_mname' => 'nullable|string|max:20',
+            'Cust_phoneno' => 'nullable|string',
+            'Cust_address' => 'nullable|string|max:50',
+            'Cust_email' => 'nullable|email|max:50',
+        ];
 
-    // Only apply the Cust_image validation if a file is uploaded
-    if ($request->hasFile('Cust_image')) {
-        $validationRules['Cust_image'] = 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048';
-    }
-
-    // Validate the request with dynamic rules
-    $request->validate($validationRules);
-
-    // Find the customer
-    $customer = Customers::findOrFail($request->Cust_ID);
-
-    // Update customer information
-    $customer->Cust_fname = $request->Cust_fname;
-    $customer->Cust_lname = $request->Cust_lname;
-    $customer->Cust_mname = $request->Cust_mname;
-    $customer->Cust_phoneno = $request->Cust_phoneno;
-    $customer->Cust_address = $request->Cust_address;
-    $customer->Cust_email = $request->Cust_email;
-
-    // Handle image update if provided
-    if ($request->hasFile('Cust_image')) {
-        // Delete the old image if it exists
-        if ($customer->Cust_image) {
-            $oldImagePath = public_path('images/' . $customer->Cust_image);
-            if (file_exists($oldImagePath)) {
-                unlink($oldImagePath);
-            }
+        // Only apply the Cust_image validation if a file is uploaded
+        if ($request->hasFile('Cust_image')) {
+            $validationRules['Cust_image'] = 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048';
         }
 
-        // Save the new image
-        $extension = $request->file('Cust_image')->extension();
-        $imageName = time() . '_' . $customer->Cust_ID . '.' . $extension;
+        // Validate the request with dynamic rules
+        $request->validate($validationRules);
 
-        $destinationPath = public_path('images');
-        $request->file('Cust_image')->move($destinationPath, $imageName);
+        // Find the customer
+        $customer = Customers::findOrFail($request->Cust_ID);
 
-        $customer->Cust_image = $imageName;
+        // Update customer information
+        $customer->Cust_fname = $request->Cust_fname;
+        $customer->Cust_lname = $request->Cust_lname;
+        $customer->Cust_mname = $request->Cust_mname;
+        $customer->Cust_phoneno = $request->Cust_phoneno;
+        $customer->Cust_address = $request->Cust_address;
+        $customer->Cust_email = $request->Cust_email;
+
+        // Handle image update if provided
+        if ($request->hasFile('Cust_image')) {
+            // Delete the old image if it exists
+            if ($customer->Cust_image) {
+                $oldImagePath = public_path('images/' . $customer->Cust_image);
+                if (file_exists($oldImagePath)) {
+                    unlink($oldImagePath);
+                }
+            }
+
+            // Save the new image
+            $extension = $request->file('Cust_image')->extension();
+            $imageName = time() . '_' . $customer->Cust_ID . '.' . $extension;
+
+            $destinationPath = public_path('images');
+            $request->file('Cust_image')->move($destinationPath, $imageName);
+
+            $customer->Cust_image = $imageName;
+        }
+
+        // Save the updated customer
+        $customer->save();
+
+        // Generate the public URL for the new image if updated
+        $imageUrl = $customer->Cust_image ? asset('images/' . $customer->Cust_image) : null;
+
+        return response()->json([
+            'message' => 'Customer updated successfully',
+            'customer' => $customer,
+            'image_url' => $imageUrl
+        ], 200);
     }
-
-    // Save the updated customer
-    $customer->save();
-
-    // Generate the public URL for the new image if updated
-    $imageUrl = $customer->Cust_image ? asset('images/' . $customer->Cust_image) : null;
-
-    return response()->json([
-        'message' => 'Customer updated successfully',
-        'customer' => $customer,
-        'image_url' => $imageUrl
-    ], 200);
-}
-
 
     public function getcustomer($id)
     {
@@ -801,7 +947,7 @@ class CustomerController extends Controller
             'Cust_email' => 'required|email|max:255|unique:customers',
             'Cust_password' => 'required|confirmed|min:6',
         ]);
-        
+
         $data = $request->all();
         $data['Cust_password'] = bcrypt($request->Cust_password);
         
@@ -813,27 +959,215 @@ class CustomerController extends Controller
         ], 201);        
     }
 
+    // public function getTrackingNo()
+    // {
+    //     $trackNo = DB::table('transactions')
+    //     ->selectRaw("
+    //         CONCAT(
+    //             'S2K-',
+    //             SUBSTRING(UPPER(MD5(RAND())), 1, 2),
+    //             CHAR(64 + MONTH(NOW())),
+    //             LPAD(DAY(NOW()), 2, '0'),
+    //             (SELECT COUNT(*) + 1
+    //             FROM transactions
+    //             WHERE DAY(Transac_datetime) = DAY(NOW())
+    //             AND MONTH(Transac_datetime) = MONTH(NOW())
+    //             AND YEAR(Transac_datetime) = YEAR(NOW())),
+    //             LPAD(Transac_ID, 6, '0')
+    //         ) AS Tracking_number
+    //     ")
+    //     ->orderByDesc('Transac_ID')
+    //     ->limit(1)
+    //     ->value('Tracking_number');
+
+    //     return response()->json($trackNo,200);
+    // }
+
+
     public function getTrackingNo()
     {
+        // Check if there are any transactions in the table
         $trackNo = DB::table('transactions')
-        ->selectRaw("
-            CONCAT(
-                'S2K-',
-                SUBSTRING(UPPER(MD5(RAND())), 1, 2),
-                CHAR(64 + MONTH(NOW())),
-                LPAD(DAY(NOW()), 2, '0'),
-                (SELECT COUNT(*) + 1
-                FROM transactions
-                WHERE DAY(Transac_datetime) = DAY(NOW())
-                AND MONTH(Transac_datetime) = MONTH(NOW())
-                AND YEAR(Transac_datetime) = YEAR(NOW())),
-                LPAD(Transac_ID, 6, '0')
-            ) AS Tracking_number
-        ")
-        ->orderByDesc('Transac_ID')
-        ->limit(1)
-        ->value('Tracking_number');
+            ->selectRaw("
+                CONCAT(
+                    'S2K-',
+                    SUBSTRING(UPPER(MD5(RAND())), 1, 2),
+                    CHAR(64 + MONTH(NOW())),
+                    LPAD(DAY(NOW()), 2, '0'),
+                    (SELECT COUNT(*) + 1
+                    FROM transactions
+                    WHERE DAY(Transac_datetime) = DAY(NOW())
+                    AND MONTH(Transac_datetime) = MONTH(NOW())
+                    AND YEAR(Transac_datetime) = YEAR(NOW())),
+                    LPAD(Transac_ID, 6, '0')
+                ) AS Tracking_number
+            ")
+            ->orderByDesc('Transac_ID')
+            ->limit(1)
+            ->value('Tracking_number');
 
-        return response()->json($trackNo,200);
+        // If there is no tracking number (i.e., the table is empty or the query didn't return anything), generate one with a base format
+        if (!$trackNo) {
+            $trackNo = 'S2K-' . strtoupper(substr(md5(rand()), 0, 2)) . chr(64 + date('m')) . str_pad(date('d'), 2, '0', STR_PAD_LEFT) . '000001';
+        }
+
+        return response()->json($trackNo, 200);
     }
+
+
+    public function checkPaymentExists($transactionId)
+    {
+        $payment = Payments::where('Transac_ID', $transactionId)->first();
+
+        if ($payment) {
+            return response()->json([
+                'exists' => true,
+                'paymentAmount' => $payment->Amount,
+                'modeOfPayment' => $payment->Mode_of_Payment,
+                'paymentDatetime' => $payment->Datetime_of_Payment
+            ]);
+        }
+
+        return response()->json(['exists' => false], 200);
+    }
+
+    public function checkPriceExists($transactionId)
+    {
+        // Fetch transaction details by Transac_ID
+        $transaction_details = TransactionDetails::where('Transac_ID', $transactionId)->first();
+    
+        // Check if transaction details exist and the 'Price' field is not null or empty
+        if ($transaction_details && !is_null($transaction_details->Price) && $transaction_details->Price !== '') {
+            // If price exists, return true and the price value
+            return response()->json([
+                'exists' => true,
+                'Price' => $transaction_details->Price
+            ]);
+        }
+        // If transaction details don't exist or price is null/empty
+        else {
+            // Return false for price existence
+            return response()->json([
+                'exists' => false,
+                'Price' => null
+            ]);
+        }
+    }
+
+    public function getshippingprice($id)
+    {
+        $custaddress = DB::table('customers')
+            ->where('Cust_ID', $id)
+            ->select('Cust_address')
+            ->get();
+    }
+
+    public function getShippingAddress()
+    {
+        $shipAddress = DB::table('shipping_service_price')
+            ->select(
+                'ShipServ_ID',
+                'City_Address',
+                'ShipServ_price'
+            )
+            ->get();
+        
+        return response()->json([
+            'message' => 'Customer added successfully',
+            'shippings' => $shipAddress
+        ], 200);       
+    }
+
+
+    public function insertaddress(Request $request)
+    {
+        $addresses = [
+            [
+                'Cust_ID' => $request->input('delivery.Cust_ID'),
+                'Province' => 'Pangasinan',
+                'Town_City' => $request->input('delivery.Town_City'),
+                'Barangay' => $request->input('delivery.Barangay'),
+                'BuildingNo_Street' => $request->input('delivery.BuildingNo_Street'),
+            ]
+        ];
+
+        // Check if pickup address is provided
+        if (!empty($request->input('pickup.Town_City')) && !empty($request->input('pickup.Barangay')) && !empty($request->input('pickup.BuildingNo_Street'))) {
+            $addresses[] = [
+                'Cust_ID' => $request->input('pickup.Cust_ID'),
+                'Province' => 'Pangasinan',
+                'Town_City' => $request->input('pickup.Town_City'),
+                'Barangay' => $request->input('pickup.Barangay'),
+                'BuildingNo_Street' => $request->input('pickup.BuildingNo_Street'),
+            ];
+        }
+
+        // Insert addresses if the array is not empty
+        if (!empty($addresses)) {
+            DB::table('customer_address')->insert($addresses);
+        }
+
+        return response()->json(['message' => 'Addresses added successfully']);
+    }
+
+    public function showaddress($id)
+    {
+
+        $customeraddress = DB::table('customer_address')
+            ->leftJoin('customers', 'customer_address.Cust_ID', '=', 'customers.Cust_ID')
+            ->LeftJoin('shipping_service_price','customer_address.Town_City','=','shipping_service_price.City_Address')
+            ->select('customers.*', 'customer_address.*','shipping_service_price.*')
+            ->where('customer_address.Cust_ID', $id)
+            ->get();
+
+        return $customeraddress;
+    }
+
+    public function addddress(Request $request)
+    {
+        // Validate incoming request data
+        $validated = $request->validate([
+            'Cust_ID' => 'required|numeric',      // Ensure Cust_ID is a number
+            'Province' => 'required|string',      // Ensure Province is a string
+            'Town_City' => 'required|string',     // Ensure Town_City is a string
+            'Barangay' => 'required|string',      // Ensure Barangay is a string
+            'BuildingNo_Street' => 'required|string', // Ensure BuildingNo_Street is a string
+            'Phoneno' => 'required|numeric|digits_between:10,12' // Validate phone number length
+        ]);
+
+        // Insert validated data into the 'customer_address' table
+        $customeraddress = DB::table('customer_address')->insert([
+            'Cust_ID' => $validated['Cust_ID'],
+            'Province' => $validated['Province'],
+            'Town_City' => $validated['Town_City'],
+            'Barangay' => $validated['Barangay'],
+            'BuildingNo_Street' => $validated['BuildingNo_Street'],
+            'Phoneno' => $validated['Phoneno'],
+            'created_at' => now(), // Automatically add current timestamp
+            'updated_at' => now()  // Automatically add current timestamp
+        ]);
+
+        // Return a response, possibly the newly inserted address or a success message
+        return response()->json([
+            'message' => 'Address added successfully',
+            'data' => $validated
+        ]);
+    }
+
+    public function deleteaddress($id)
+    {
+        // Delete the address associated with the given Cust_ID
+        $deleted = DB::table('customer_address')
+            ->where('AddLaundryServ_ID', $id)
+            ->delete();
+    
+        // Check if any rows were deleted
+        if ($deleted) {
+            return response()->json(['message' => 'Address deleted successfully'], 200);
+        } else {
+            return response()->json(['message' => 'Address not found'], 404);
+        }
+    }    
+
+    
 }

@@ -42,18 +42,29 @@ Route::get('/updateStatus/{id}',[CustomerController::class,'updateStatus']);
 Route::get('/displayDet/{id}',[CustomerController::class,'displayDet']);
 Route::delete('/deleteDetails', [CustomerController::class, 'deleteDetails']);
 Route::get('/getTrackingNo',[CustomerController::class,'getTrackingNo']);
+Route::post('removeServices', [CustomerController::class, 'removeServices']);
 
 
 
 //customer - transactions
 Route::get('/getTransId/{id}',[CustomerController::class,'getTransId']);
 Route::get('getDetails/{id}',[CustomerController::class,'getDetails']);
+Route::get('checkPriceExists/{transactionId}',[CustomerController::class,'checkPriceExists']);
+Route::get('checkPaymentExists/{transactionId}',[CustomerController::class,'checkPaymentExists']);
+Route::post('removeServices', [CustomerController::class, 'removeServices']);
+Route::get('getShippingAddress', [CustomerController::class, 'getShippingAddress']);
+Route::post('insertaddress',[CustomerController::class,'insertaddress']);
+Route::get('showaddress/{id}',[CustomerController::class,'showaddress']);
+Route::post('addddress',[CustomerController::class,'addddress']);
+Route::delete('deleteaddress/{id}',[CustomerController::class,'deleteaddress']);
 
 
 //customer - account
 Route::post('/updateCus', [CustomerController::class, 'updateCus']);
 Route::get('/getcustomer/{id}',[CustomerController::class,'getcustomer']);
 Route::post('upload/{trackingNumber}', [CustomerController::class, 'updateProfileImage']);
+Route::post('insertProofOfPayment/{paymentId}', [CustomerController::class, 'insertProofOfPayment']);
+
 
 
 // signup
