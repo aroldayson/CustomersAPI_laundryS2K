@@ -27,6 +27,7 @@ Route::get('/', function () {
 Route::post('login', [CustomerController::class,'login']);
 Route::post('logout', [CustomerController::class,'logout'])->middleware('auth:sanctum');
 Route::post('/signup',[CustomerController::class,'signup']);
+Route::get('displayCustomer/{id}',[CustomerController::class,'displayCustomer']);
 
 //customer - home
 Route::post('/addtrans',[CustomerController::class,'addtrans']);
@@ -92,11 +93,11 @@ Route::post('addcustomer', [CustomerController::class,'addcustomer']);
 //     Route::get('/displayDet/{id}', [CustomerController::class, 'displayDet']);
 //     Route::delete('/deleteDetails', [CustomerController::class, 'deleteDetails']);
 //     Route::get('/getTrackingNo', [CustomerController::class, 'getTrackingNo']);
-    
+
 //     // Customer - Transactions (Require authentication for these routes)
 //     Route::get('/getTransId/{id}', [CustomerController::class, 'getTransId']);
 //     Route::get('getDetails/{id}', [CustomerController::class, 'getDetails']);
-    
+
 //     // Customer - Account (Require authentication for these routes)
 //     Route::post('/updateCus', [CustomerController::class, 'updateCus']);
 //     Route::get('/getcustomer/{id}', [CustomerController::class, 'getcustomer']);
@@ -105,17 +106,3 @@ Route::post('addcustomer', [CustomerController::class,'addcustomer']);
 
 // // Signup (Public route)
 // Route::post('addcustomer', [CustomerController::class, 'addcustomer']);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
