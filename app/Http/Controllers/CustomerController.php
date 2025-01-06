@@ -336,7 +336,8 @@ class CustomerController extends Controller
             DB::raw('SUM(DISTINCT td.Qty) as totalQty'),
             DB::raw('SUM(DISTINCT td.Weight) as totalWeight'),
             DB::raw('SUM(DISTINCT td.Price) as totalprice'),
-            DB::raw('SUM(lc.Price * lc.Minimum_weight) as calculatedTotalPrice'), // Total price calculation
+            DB::raw('SUM(DISTINCT lc.Price) as calculatedTotalPrice'), // Total price calculation
+            // DB::raw('SUM(DISTINCT lc.Price * lc.Minimum_weight) as calculatedTotalPrice'), // Total price calculation
             'transactions.Tracking_number as track_num',
             'transactions.Transac_datetime as trans_date',
             'transactions.Transac_ID as trans_ID',
@@ -428,7 +429,7 @@ class CustomerController extends Controller
         foreach ($addserviceIds as $addserviceId) {
             DB::table('shipping_details')->insert([
                 'AddService_ID' => $addserviceId,
-                'CustAdd_ID' =>$request->CustAdd_ID, // You might need to fetch the correct address ID here
+                'CustAdd_ID' =>$request->CustAdd_ID, 
                 'ShipDesc_timeslot' => "sample",
                 'ShipDesc_instructions' => "sample",
                 'ShipDesc_Status' => "Pending",
@@ -657,19 +658,19 @@ class CustomerController extends Controller
 
         // Get the services (distinct service names for the transaction)
         $services = DB::table('additional_services')
-            ->LeftJoin('transactions', 'additional_services.Transac_ID', '=', 'transactions.Transac_ID')
-            ->LeftJoin('shipping_details', 'additional_services.AddService_ID', '=', 'shipping_details.AddService_ID')
-            ->LeftJoin('customer_address', 'shipping_details.CustAdd_ID', '=', 'customer_address.CustAdd_ID')
-            ->LeftJoin('shipping_service_price', 'customer_address.Town_City', '=', 'shipping_service_price.ShipServ_Town')
-            ->where('transactions.Transac_ID', $id)
+            ->leftJoin('transactions', 'additional_services.Transac_ID', '=', 'transactions.Transac_ID')
+            ->join('shipping_details', 'additional_services.AddService_ID', '=', 'shipping_details.AddService_ID')
+            ->join('customer_address', 'shipping_details.CustAdd_ID', '=', 'customer_address.CustAdd_ID')
+            ->where('additional_services.Transac_ID', $id)
             ->select(
-                'transactions.Transac_ID', // Idagdag kung kailangang makita ang Transac_ID
+                'transactions.Transac_datetime as trans_date',
+                DB::raw('DATE_ADD(transactions.Transac_datetime, INTERVAL 4 DAY) as estimated_date'),
+                'transactions.Transac_ID',
                 'additional_services.AddService_name',
-                'shipping_service_price.*',
-                DB::raw("CONCAT(customer_address.BuildingUnitStreet_No, ', ', customer_address.Barangay, ', ', customer_address.Town_City, ', ', customer_address.Province) AS FullAddress")
+                'additional_services.AddService_price',
+                DB::raw("CASE WHEN additional_services.AddService_name = 'Rush Job' THEN NULL ELSE CONCAT(customer_address.BuildingUnitStreet_No, ', ', customer_address.Barangay, ', ', customer_address.Town_City, ', ', customer_address.Province) END AS FullAddress")
             )
             ->get();
-
 
         $serviceprice = DB::table('additional_services')
             ->where('Transac_ID', $id)
