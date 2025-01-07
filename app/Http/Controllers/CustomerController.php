@@ -322,8 +322,8 @@ class CustomerController extends Controller
         // Fetch transactions and related data
         $transactions = DB::table('transactions')
         ->leftJoin('customers', 'transactions.Cust_ID', '=', 'customers.Cust_ID')
-        ->leftJoin('transaction_details as td', 'transactions.Transac_ID', '=', 'td.Transac_ID')
-        ->leftJoin('laundry_categories as lc', 'td.Categ_ID', '=', 'lc.Categ_ID')
+        ->leftJoin('transaction_details', 'transactions.Transac_ID', '=', 'transaction_details.Transac_ID')
+        ->leftJoin('laundry_categories as lc', 'transaction_details.Categ_ID', '=', 'lc.Categ_ID')
         ->leftJoin('payments', 'transactions.Transac_ID', '=', 'payments.Transac_ID')
         ->leftJoin('transaction_status', 'transactions.Transac_ID', '=', 'transaction_status.Transac_ID')
         ->leftJoin('additional_services', 'transactions.Transac_ID', '=', 'additional_services.Transac_ID')
@@ -333,10 +333,10 @@ class CustomerController extends Controller
             DB::raw('MIN(DISTINCT transaction_status.TransacStatus_name) as trans_stat'), // Get only the first status
             'customers.Cust_fname as fname',
             'customers.Cust_lname as lname',
-            DB::raw('SUM(DISTINCT td.Qty) as totalQty'),
-            DB::raw('SUM(DISTINCT td.Weight) as totalWeight'),
-            DB::raw('SUM(DISTINCT td.Price) as totalprice'),
-            DB::raw('SUM(DISTINCT lc.Price) as calculatedTotalPrice'), // Total price calculation
+            DB::raw('SUM(DISTINCT transaction_details.Qty) as totalQty'),
+            DB::raw('SUM(DISTINCT transaction_details.Weight) as totalWeight'),
+            DB::raw('SUM(DISTINCT transaction_details.Price) as totalprice'),
+            DB::raw('SUM(DISTINCT additional_services.AddService_price) + SUM(DISTINCT transaction_details.Price) as calculatedTotalPrice'),
             // DB::raw('SUM(DISTINCT lc.Price * lc.Minimum_weight) as calculatedTotalPrice'), // Total price calculation
             'transactions.Tracking_number as track_num',
             'transactions.Transac_datetime as trans_date',
@@ -416,11 +416,22 @@ class CustomerController extends Controller
     
         // Insert selected services into the additional_services table and get the AddService_ID
         $addserviceIds = [];
+        $basePrice = $request->AddService_price;
         foreach ($request->service as $service) {
+            $price = 0;
+
+            // Calculate price dynamically
+            if ($service === 'Rush-Job') {
+                $price = $basePrice; // Assume base price is already doubled for Rush-Job
+            } elseif ($service === 'PickUp-Service') {
+                $price = 50; // Fixed price
+            } elseif ($service === 'Delivery-Service') {
+                $price = 50; // Fixed price
+            }
             $addserviceId = DB::table('additional_services')->insertGetId([
                 'Transac_ID' => $transacId,
                 'AddService_name' => $service,
-                'AddService_price' => '50',  // Use dynamic price if needed
+                'AddService_price' =>  $price,  // Use dynamic price if needed
             ]);
             $addserviceIds[] = $addserviceId;
         }
