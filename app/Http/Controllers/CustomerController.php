@@ -657,6 +657,11 @@ class CustomerController extends Controller
     public function getDetails($id)
     {
         // Get the main transaction details
+        $payment = DB::table('payments')
+            ->where('Transac_ID', $id)
+            ->select('payments.Amount')
+            ->get();
+
         $temp = DB::table('transactions')
             ->where('Transac_ID', $id)
             ->get();
@@ -672,8 +677,10 @@ class CustomerController extends Controller
             ->leftJoin('transactions', 'additional_services.Transac_ID', '=', 'transactions.Transac_ID')
             ->join('shipping_details', 'additional_services.AddService_ID', '=', 'shipping_details.AddService_ID')
             ->join('customer_address', 'shipping_details.CustAdd_ID', '=', 'customer_address.CustAdd_ID')
+            ->leftJoin('payments', 'transactions.Transac_ID', '=', 'payments.Transac_ID')
             ->where('additional_services.Transac_ID', $id)
             ->select(
+                'payments.Amount', 
                 'transactions.Transac_datetime as trans_date',
                 DB::raw('DATE_ADD(transactions.Transac_datetime, INTERVAL 4 DAY) as estimated_date'),
                 'transactions.Transac_ID',
@@ -715,6 +722,7 @@ class CustomerController extends Controller
 
             // Add the data to the transactions array
             $transactions[] = [
+                'payments' => $payment,
                 'Tracking_number' => $t->Tracking_number,
                 'Transac_status' => $mainTransactionStatus,  // Use the status details you fetched
                 'total' => $total,
