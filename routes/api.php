@@ -48,7 +48,6 @@ Route::get('/fetchaddress/{id}',[CustomerController::class,'fetchaddress']);
 Route::post('/updateaddress',[CustomerController::class,'updateaddress']);
 
 
-
 //customer - transactions
 Route::get('/getTransId/{id}',[CustomerController::class,'getTransId']);
 Route::get('getDetails/{id}',[CustomerController::class,'getDetails']);

@@ -390,70 +390,72 @@ class CustomerController extends Controller
 
     public function addtrans(Request $request)
     {
-        // If 'service' is empty, set it to ['none']
+        // Set 'service' to an empty array if it's not provided
         if (empty($request->service)) {
-            $request->merge(['service' => ['none']]);
+            $request->merge(['service' => []]);
         }
-    
+
         // Validate the incoming request data
         $request->validate([
-            'CustAdd_ID' => 'required|string',
+            'CustAdd_ID' => 'nullable|string',
             'Cust_ID' => 'required|integer|exists:customers,Cust_ID',
             'Tracking_number' => 'required|string|max:255|unique:transactions,Tracking_number',
             'laundry' => 'required|array|min:1',
             'laundry.*.Categ_ID' => 'required|integer',
             'laundry.*.Qty' => 'required|integer',
-            'service' => 'required|array|min:1',
+            'service' => 'nullable|array',
             'service.*' => 'in:Rush-Job,PickUp-Service,Delivery-Service,none',
         ]);
-    
+
         // Insert into transactions table and get Transac_ID
         $transacId = DB::table('transactions')->insertGetId([
             'Cust_ID' => $request->Cust_ID,
             'Tracking_number' => $request->Tracking_number,
             'Transac_datetime' => now(),
         ]);
-    
+
         // Insert into transaction_status table
         $transacStatusId = DB::table('transaction_status')->insertGetId([
             'TransacStatus_name' => 'pending',
             'TransacStatus_datetime' => now(),
             'Transac_ID' => $transacId,
         ]);
-    
-        // Insert selected services into the additional_services table and get the AddService_ID
-        $addserviceIds = [];
-        $basePrice = $request->AddService_price;
-        foreach ($request->service as $service) {
-            $price = 0;
 
-            // Calculate price dynamically
-            if ($service === 'Rush-Job') {
-                $price = $basePrice; // Assume base price is already doubled for Rush-Job
-            } elseif ($service === 'PickUp-Service') {
-                $price = 50; // Fixed price
-            } elseif ($service === 'Delivery-Service') {
-                $price = 50; // Fixed price
+        // Insert selected services into the additional_services table
+        if (!empty($request->service)) {
+            $addserviceIds = [];
+            $basePrice = $request->AddService_price;
+            foreach ($request->service as $service) {
+                $price = 0;
+
+                // Calculate price dynamically
+                if ($service === 'Rush-Job') {
+                    $price = $basePrice; // Assume base price is already doubled for Rush-Job
+                } elseif ($service === 'PickUp-Service') {
+                    $price = 50; // Fixed price
+                } elseif ($service === 'Delivery-Service') {
+                    $price = 50; // Fixed price
+                }
+                $addserviceId = DB::table('additional_services')->insertGetId([
+                    'Transac_ID' => $transacId,
+                    'AddService_name' => $service,
+                    'AddService_price' => $price,  // Use dynamic price if needed
+                ]);
+                $addserviceIds[] = $addserviceId;
             }
-            $addserviceId = DB::table('additional_services')->insertGetId([
-                'Transac_ID' => $transacId,
-                'AddService_name' => $service,
-                'AddService_price' =>  $price,  // Use dynamic price if needed
-            ]);
-            $addserviceIds[] = $addserviceId;
+
+            // Insert shipping details for each additional service
+            foreach ($addserviceIds as $addserviceId) {
+                DB::table('shipping_details')->insert([
+                    'AddService_ID' => $addserviceId,
+                    'CustAdd_ID' => $request->CustAdd_ID,
+                    'ShipDesc_timeslot' => "sample",
+                    'ShipDesc_instructions' => "sample",
+                    'ShipDesc_Status' => "Pending",
+                ]);
+            }
         }
-    
-        // Insert shipping details for each additional service
-        foreach ($addserviceIds as $addserviceId) {
-            DB::table('shipping_details')->insert([
-                'AddService_ID' => $addserviceId,
-                'CustAdd_ID' =>$request->CustAdd_ID, 
-                'ShipDesc_timeslot' => "sample",
-                'ShipDesc_instructions' => "sample",
-                'ShipDesc_Status' => "Pending",
-            ]);
-        }
-    
+
         // Prepare transaction details and insert into transaction_details table
         $transactionDetails = [];
         foreach ($request->laundry as $laundryItem) {
@@ -464,10 +466,11 @@ class CustomerController extends Controller
             ];
         }
         DB::table('transaction_details')->insert($transactionDetails);
-    
+
         // Return the response with transaction and details
         return response()->json(['Transaction' => $transacId, 'Transaction_details' => $transactionDetails], 200);
     }
+
 
     public function fetchaddress($id)
     {
@@ -517,10 +520,39 @@ class CustomerController extends Controller
         }
     }
 
+    // public function updateaddress(Request $request)
+    // {
+    //     $validated = $request->validate([
+    //         'CustAdd_ID' => 'required|numeric',
+    //         'Phoneno' => 'nullable|string|max:255',
+    //         'Town_City' => 'nullable|string|max:255',
+    //         'Barangay' => 'nullable|string|max:255',
+    //         'Province' => 'nullable|string|max:255',
+    //         'BuildingUnitStreet_No' => 'nullable|string|max:255',
+    //     ]);
 
-    
+    //     $address = DB::table('customer_address')->where('CustAdd_ID', $validated['CustAdd_ID'])->first();
 
+    //     if (!$address) {
+    //         return response()->json(['message' => 'Address not found'], 404);
+    //     }
 
+    //     $updated = DB::table('customer_address')
+    //         ->where('CustAdd_ID', $validated['CustAdd_ID'])
+    //         ->update([
+    //             'Phoneno' => $validated['Phoneno'],
+    //             'Town_City' => $validated['Town_City'],
+    //             'Barangay' => $validated['Barangay'],
+    //             'Province' => $validated['Province'],
+    //             'BuildingUnitStreet_No' => $validated['BuildingUnitStreet_No'],
+    //         ]);
+
+    //     if ($updated) {
+    //         return response()->json(['message' => 'Address updated successfully'], 200);
+    //     } else {
+    //         return response()->json(['message' => 'No changes made to the address'], 400);
+    //     }
+    // }
 
     public function displayDet($id)
     {
