@@ -44,6 +44,8 @@ Route::get('/displayDet/{id}',[CustomerController::class,'displayDet']);
 Route::delete('/deleteDetails', [CustomerController::class, 'deleteDetails']);
 Route::get('/getTrackingNo',[CustomerController::class,'getTrackingNo']);
 Route::post('removeServices', [CustomerController::class, 'removeServices']);
+Route::get('/fetchaddress/{id}',[CustomerController::class,'fetchaddress']);
+Route::post('/updateaddress',[CustomerController::class,'updateaddress']);
 
 
 
@@ -57,7 +59,7 @@ Route::get('getShippingAddress', [CustomerController::class, 'getShippingAddress
 Route::post('insertaddress',[CustomerController::class,'insertaddress']);
 Route::get('showaddress/{id}',[CustomerController::class,'showaddress']);
 Route::post('addddress',[CustomerController::class,'addddress']);
-Route::delete('deleteaddress/{id}',[CustomerController::class,'deleteaddress']);
+Route::get('deleteaddress/{id}',[CustomerController::class,'deleteaddress']);
 
 
 //customer - account

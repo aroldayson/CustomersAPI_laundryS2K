@@ -330,7 +330,14 @@ class CustomerController extends Controller
         ->leftJoin('customer_address', 'transactions.Cust_ID', '=', 'customer_address.Cust_ID')
         ->select(
             DB::raw('GROUP_CONCAT(DISTINCT lc.Category SEPARATOR ", ") as Category'),
-            DB::raw('MIN(DISTINCT transaction_status.TransacStatus_name) as trans_stat'), // Get only the first status
+            DB::raw('MAX(transaction_status.TransacStatus_datetime) as latest_datetime'),
+            DB::raw("(SELECT TransacStatus_name
+                FROM transaction_status AS ts
+                WHERE ts.Transac_ID = transactions.Transac_ID
+                AND ts.TransacStatus_datetime = (SELECT MAX(TransacStatus_datetime)
+                                    FROM transaction_status
+                                    WHERE Transac_ID = transactions.Transac_ID)
+                LIMIT 1) AS trans_stat"),
             'customers.Cust_fname as fname',
             'customers.Cust_lname as lname',
             DB::raw('SUM(DISTINCT transaction_details.Qty) as totalQty'),
@@ -461,7 +468,56 @@ class CustomerController extends Controller
         // Return the response with transaction and details
         return response()->json(['Transaction' => $transacId, 'Transaction_details' => $transactionDetails], 200);
     }
+
+    public function fetchaddress($id)
+    {
+        // Retrieve a specific customer address by ID
+        $address = DB::table('customer_address')->where('CustAdd_ID', $id)->first();
     
+        // Check if the address exists
+        if (!$address) {
+            return response()->json(['message' => 'Address not found'], 404);
+        }
+    
+        // Return the address as a JSON response
+        return response()->json(['data' => $address], 200);
+    }
+    
+    public function updateaddress(Request $request)
+    {
+        $validated = $request->validate([
+            'CustAdd_ID' => 'required|numeric',
+            'Phoneno' => 'nullable|string|max:255',
+            'Town_City' => 'nullable|string|max:255',
+            'Barangay' => 'nullable|string|max:255',
+            'Province' => 'nullable|string|max:255',
+            'BuildingUnitStreet_No' => 'nullable|string|max:255',
+        ]);
+
+        $address = DB::table('customer_address')->where('CustAdd_ID', $validated['CustAdd_ID'])->first();
+
+        if (!$address) {
+            return response()->json(['message' => 'Address not found'], 404);
+        }
+
+        $updated = DB::table('customer_address')
+            ->where('CustAdd_ID', $validated['CustAdd_ID'])
+            ->update([
+                'Phoneno' => $validated['Phoneno'],
+                'Town_City' => $validated['Town_City'],
+                'Barangay' => $validated['Barangay'],
+                'Province' => $validated['Province'],
+                'BuildingUnitStreet_No' => $validated['BuildingUnitStreet_No'],
+            ]);
+
+        if ($updated) {
+            return response()->json(['message' => 'Address updated successfully'], 200);
+        } else {
+            return response()->json(['message' => 'No changes made to the address'], 400);
+        }
+    }
+
+
     
 
 
@@ -659,8 +715,7 @@ class CustomerController extends Controller
         // Get the main transaction details
         $payment = DB::table('payments')
             ->where('Transac_ID', $id)
-            ->select('payments.Amount')
-            ->get();
+            ->value('Amount');
 
         $temp = DB::table('transactions')
             ->where('Transac_ID', $id)
@@ -1056,17 +1111,16 @@ class CustomerController extends Controller
 
     public function addddress(Request $request)
     {
-        // Validate incoming request data
+       
         $validated = $request->validate([
-            'Cust_ID' => 'required|numeric', // Ensure Cust_ID is a number
-            'Province' => 'required|string|max:255', // Ensure Province is a string with a max length
-            'Town_City' => 'required|string|max:255', // Ensure Town_City is a string with a max length
-            'Barangay' => 'required|string|max:255', // Ensure Barangay is a string with a max length
-            'BuildingUnitStreet_No' => 'required|string|max:255', // Ensure BuildingUnitStreet_No is a string with a max length
-            'Phoneno' => 'required|string', // Validate phone number length
+            'Cust_ID' => 'required|numeric', 
+            'Province' => 'required|string|max:255',
+            'Town_City' => 'required|string|max:255',
+            'Barangay' => 'required|string|max:255', 
+            'BuildingUnitStreet_No' => 'required|string|max:255',
+            'Phoneno' => 'required|string', 
         ]);
 
-        // Insert validated data into the 'customer_address' table
         $customeraddress =  DB::table('customer_address')->insert([
             'Cust_ID' => $validated['Cust_ID'],
             'Province' => $validated['Province'],
@@ -1074,12 +1128,9 @@ class CustomerController extends Controller
             'Barangay' => $validated['Barangay'],
             'BuildingUnitStreet_No' => $validated['BuildingUnitStreet_No'],
             'Phoneno' => $validated['Phoneno'],
-            'CustAdd_status' => "Pending" // Default status
-            // 'created_at' => now(), // Automatically add current timestamp
-            // 'updated_at' => now()  // Automatically add current timestamp
+            'CustAdd_status' => "default" 
         ]);
 
-        // Return a response, possibly the newly inserted address or a success message
         return response()->json([
             'message' => 'Address added successfully',
             'data' => $validated
@@ -1088,18 +1139,20 @@ class CustomerController extends Controller
 
     public function deleteaddress($id)
     {
-        // Delete the address associated with the given Cust_ID
-        $deleted = DB::table('customer_address')
+        // Update the address status to 'canceled' (or any other status you prefer)
+        $updated = DB::table('customer_address')
             ->where('CustAdd_ID', $id)
-            ->delete();
+            ->update(['CustAdd_status' => 'canceled']);
 
-        // Check if any rows were deleted
-        if ($deleted) {
-            return response()->json(['message' => 'Address deleted successfully'], 200);
+        // Check if any rows were updated
+        if ($updated) {
+            return response()->json(['message' => 'Address canceled successfully'], 200);
         } else {
             return response()->json(['message' => 'Address not found'], 404);
         }
     }
+    
+
 
 
 }
