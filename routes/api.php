@@ -24,7 +24,7 @@ Route::get('/', function () {
 
 
 //customer - login
-Route::post('login', [CustomerController::class,'login']);
+Route::post('loginsss', [CustomerController::class,'login']);
 Route::post('logout', [CustomerController::class,'logout'])->middleware('auth:sanctum');
 Route::post('/signup',[CustomerController::class,'signup']);
 Route::get('displayCustomer/{id}',[CustomerController::class,'displayCustomer']);
