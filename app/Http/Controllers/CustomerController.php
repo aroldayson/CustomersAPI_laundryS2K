@@ -398,14 +398,28 @@ class CustomerController extends Controller
         // Validate the incoming request data
         $request->validate([
             'CustAdd_ID' => 'nullable|string',
-            'Cust_ID' => 'required|integer|exists:customers,Cust_ID',
-            'Tracking_number' => 'required|string|max:255|unique:transactions,Tracking_number',
-            'laundry' => 'required|array|min:1',
-            'laundry.*.Categ_ID' => 'required|integer',
-            'laundry.*.Qty' => 'required|integer',
-            'service' => 'nullable|array',
-            'service.*' => 'in:Rush-Job,PickUp-Service,Delivery-Service,none',
+            'Cust_ID' => 'required|integer|exists:customers,Cust_ID',  // Validate if Cust_ID exists in the customers table
+            'Tracking_number' => 'required|string|max:255|unique:transactions,Tracking_number',  // Ensure unique tracking number
+            'laundry' => 'required|array|min:1',  // Laundry details should be an array with at least one item
+            'laundry.*.Categ_ID' => 'required|integer',  // Categ_ID for each laundry item
+            'laundry.*.Qty' => 'required|integer',  // Quantity for each laundry item
+            'service' => 'nullable|array',  // Services should be an array
+            'service.*.AddService_price' => 'required|numeric',  // Ensure service price is numeric
+            'service.*.AddService_name' => 'required|string',  // Service name should be a string
+            'service.*.CustAdd_ID' => 'nullable|numeric',  // CustAdd_ID is optional for services
         ]);
+
+        // Check if the Cust_ID exists in the customers table
+        $customerExists = DB::table('customers')->where('Cust_ID', $request->Cust_ID)->exists();
+        if (!$customerExists) {
+            return response()->json(['message' => 'The selected Cust_ID is invalid.'], 400);
+        }
+
+        // Check if the Tracking_number already exists in the transactions table
+        $trackingExists = DB::table('transactions')->where('Tracking_number', $request->Tracking_number)->exists();
+        if ($trackingExists) {
+            return response()->json(['message' => 'The Tracking number has already been taken.'], 400);
+        }
 
         // Insert into transactions table and get Transac_ID
         $transacId = DB::table('transactions')->insertGetId([
@@ -415,33 +429,26 @@ class CustomerController extends Controller
         ]);
 
         // Insert into transaction_status table
-        $transacStatusId = DB::table('transaction_status')->insertGetId([
+        DB::table('transaction_status')->insert([
             'TransacStatus_name' => 'pending',
             'TransacStatus_datetime' => now(),
             'Transac_ID' => $transacId,
         ]);
 
         // Insert selected services into the additional_services table
+        $addserviceIds = [];
         if (!empty($request->service)) {
-            $addserviceIds = [];
-            $basePrice = $request->AddService_price;
             foreach ($request->service as $service) {
-                $price = 0;
+                // Calculate price for each service if needed (you can adjust logic here)
+                $price = $service['AddService_price'];  // Price passed from Angular
 
-                // Calculate price dynamically
-                if ($service === 'Rush-Job') {
-                    $price = $basePrice; // Assume base price is already doubled for Rush-Job
-                } elseif ($service === 'PickUp-Service') {
-                    $price = 50; // Fixed price
-                } elseif ($service === 'Delivery-Service') {
-                    $price = 50; // Fixed price
-                }
+                // Insert each service into the additional_services table
                 $addserviceId = DB::table('additional_services')->insertGetId([
                     'Transac_ID' => $transacId,
-                    'AddService_name' => $service,
-                    'AddService_price' => $price,  // Use dynamic price if needed
+                    'AddService_name' => $service['AddService_name'],
+                    'AddService_price' => $price,
                 ]);
-                $addserviceIds[] = $addserviceId;
+                $addserviceIds[] = $addserviceId;  // Store the inserted service ID
             }
 
             // Insert shipping details for each additional service
@@ -449,9 +456,9 @@ class CustomerController extends Controller
                 DB::table('shipping_details')->insert([
                     'AddService_ID' => $addserviceId,
                     'CustAdd_ID' => $request->CustAdd_ID,
-                    'ShipDesc_timeslot' => "sample",
-                    'ShipDesc_instructions' => "sample",
-                    'ShipDesc_Status' => "Pending",
+                    'ShipDesc_timeslot' => "sample",  // Replace with actual timeslot if needed
+                    'ShipDesc_instructions' => "sample",  // Replace with actual instructions if needed
+                    'ShipDesc_Status' => "Pending",  // Adjust shipping status if needed
                 ]);
             }
         }
@@ -468,9 +475,12 @@ class CustomerController extends Controller
         DB::table('transaction_details')->insert($transactionDetails);
 
         // Return the response with transaction and details
-        return response()->json(['Transaction' => $transacId, 'Transaction_details' => $transactionDetails], 200);
+        return response()->json([
+            'Transaction' => $transacId,
+            'Transaction_details' => $transactionDetails,
+            'Service' => $service
+        ], 200);
     }
-
 
     public function fetchaddress($id)
     {
