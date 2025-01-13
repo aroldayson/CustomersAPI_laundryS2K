@@ -46,6 +46,8 @@ Route::get('/getTrackingNo',[CustomerController::class,'getTrackingNo']);
 Route::post('removeServices', [CustomerController::class, 'removeServices']);
 Route::get('/fetchaddress/{id}',[CustomerController::class,'fetchaddress']);
 Route::post('/updateaddress',[CustomerController::class,'updateaddress']);
+Route::post('/addcateg', [CustomerController::class, 'addcateg']);
+Route::delete('/deleteCateg/{id}',[CustomerController::class,'deleteCateg']);
 
 
 //customer - transactions

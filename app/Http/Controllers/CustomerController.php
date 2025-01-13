@@ -470,6 +470,7 @@ class CustomerController extends Controller
                 'Transac_ID' => $transacId,
                 'Categ_ID' => $laundryItem['Categ_ID'],
                 'Qty' => $laundryItem['Qty'],
+                'Price' => $laundryItem['Qty'],
             ];
         }
         DB::table('transaction_details')->insert($transactionDetails);
@@ -481,6 +482,31 @@ class CustomerController extends Controller
             'Service' => $service
         ], 200);
     }
+    public function deleteCateg(Request $request, $id)
+    {
+        // Validate the input
+        // $validated = $request->validate([
+        //     'TransacDet_ID' => 'required|numeric', // TransacDet_ID is mandatory
+        // ]);
+
+        // Perform the delete operation
+        $deleted = DB::table('transaction_details')
+            ->where('TransacDet_ID', $id)
+            ->delete();
+
+        if ($deleted) {
+            return response()->json([
+                'message' => 'Transaction detail deleted successfully.',
+                'deleted_id' => $id
+            ], 200); // OK
+        } else {
+            return response()->json([
+                'message' => 'No record found with the given TransacDet_ID.'
+            ], 404); // Not found
+        }
+    }
+
+    
 
     public function fetchaddress($id)
     {
@@ -778,6 +804,7 @@ class CustomerController extends Controller
             ->where('additional_services.Transac_ID', $id)
             ->select(
                 'payments.Amount', 
+                'customer_address.CustAdd_ID',
                 'transactions.Transac_datetime as trans_date',
                 DB::raw('DATE_ADD(transactions.Transac_datetime, INTERVAL 4 DAY) as estimated_date'),
                 'transactions.Transac_ID',
@@ -1106,7 +1133,6 @@ class CustomerController extends Controller
         ], 200);
     }
 
-
     public function insertaddress(Request $request)
     {
         $addresses = [
@@ -1193,8 +1219,32 @@ class CustomerController extends Controller
             return response()->json(['message' => 'Address not found'], 404);
         }
     }
-    
 
+    public function addCateg(Request $request)
+    {
+        // Validate the array of objects
+        $validated = $request->validate([
+            '*.Categ_ID' => 'required|numeric',
+            '*.Price' => 'required|numeric',
+            '*.Qty' => 'required|numeric',
+            '*.Transac_ID' => 'required|numeric',
+        ]);
+
+        // Insert multiple records
+        $result = DB::table('transaction_details')->insert($validated);
+
+        // Check if the insert operation was successful
+        if ($result) {
+            return response()->json([
+                'message' => 'Transaction details added successfully',
+                'data' => $validated
+            ], 201);
+        } else {
+            return response()->json([
+                'message' => 'Failed to add transaction details'
+            ], 500);
+        }
+    }
 
 
 }
