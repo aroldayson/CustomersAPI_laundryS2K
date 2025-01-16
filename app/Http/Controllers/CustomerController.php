@@ -17,6 +17,7 @@ use App\Models\Customers;
 use App\Models\TransactionDetails;
 use App\Models\Transactions;
 use App\Models\Cashdetails;
+use App\Models\Additional_services;
 use Illuminate\Support\Facades\Log;
 use App\Models\TransactionStatus;
 
@@ -456,9 +457,7 @@ class CustomerController extends Controller
                 DB::table('shipping_details')->insert([
                     'AddService_ID' => $addserviceId,
                     'CustAdd_ID' => $request->CustAdd_ID,
-                    'ShipDesc_timeslot' => "sample",  // Replace with actual timeslot if needed
-                    'ShipDesc_instructions' => "sample",  // Replace with actual instructions if needed
-                    'ShipDesc_Status' => "Pending",  // Adjust shipping status if needed
+                    'ShipDesc_instructions' =>$request->CustAdd_ID,
                 ]);
             }
         }
@@ -470,7 +469,8 @@ class CustomerController extends Controller
                 'Transac_ID' => $transacId,
                 'Categ_ID' => $laundryItem['Categ_ID'],
                 'Qty' => $laundryItem['Qty'],
-                'Price' => $laundryItem['Qty'],
+                'Price' => $laundryItem['Price'],
+                'Weight' => $laundryItem['Weight'],
             ];
         }
         DB::table('transaction_details')->insert($transactionDetails);
@@ -492,6 +492,24 @@ class CustomerController extends Controller
         // Perform the delete operation
         $deleted = DB::table('transaction_details')
             ->where('TransacDet_ID', $id)
+            ->delete();
+
+        if ($deleted) {
+            return response()->json([
+                'message' => 'Transaction detail deleted successfully.',
+                'deleted_id' => $id
+            ], 200); // OK
+        } else {
+            return response()->json([
+                'message' => 'No record found with the given TransacDet_ID.'
+            ], 404); // Not found
+        }
+    }
+
+    public function deleteServices(Request $request, $id)
+    {
+        $deleted = DB::table('additional_services')
+            ->where('AddService_ID', $id)
             ->delete();
 
         if ($deleted) {
@@ -779,7 +797,7 @@ class CustomerController extends Controller
     }
 
     public function getDetails($id)
-    {
+    {  
         // Get the main transaction details
         $payment = DB::table('payments')
             ->where('Transac_ID', $id)
@@ -803,6 +821,7 @@ class CustomerController extends Controller
             ->leftJoin('payments', 'transactions.Transac_ID', '=', 'payments.Transac_ID')
             ->where('additional_services.Transac_ID', $id)
             ->select(
+                'additional_services.AddService_ID',
                 'payments.Amount', 
                 'customer_address.CustAdd_ID',
                 'transactions.Transac_datetime as trans_date',
@@ -1012,6 +1031,41 @@ class CustomerController extends Controller
             'customerFirst' => $temp2
         ];
     }
+
+    public function adddetails(Request $request)
+{
+    // Validate the incoming request data
+    $validatedData = $request->validate([
+        'AddService_name' => 'required|string|max:255',
+        'AddService_price' => 'required|numeric|min:0',
+        'CustAdd_ID' => 'required|integer',
+        'Transac_ID' => 'required|integer',
+    ]);
+
+    try {
+        // Insert data into the database using query builder
+        $id = DB::table('additional_services')->insertGetId([
+            'AddService_name' => $validatedData['AddService_name'],
+            'AddService_price' => $validatedData['AddService_price'],
+            'CustAdd_ID' => $validatedData['CustAdd_ID'],
+            'Transac_ID' => $validatedData['Transac_ID']
+        ]);
+
+        // Fetch the newly inserted record to return as response
+        $customer = DB::table('additional_services')->where('id', $id)->first();
+
+        return response()->json([
+            'message' => 'Details added successfully',
+            'customer' => $customer
+        ], 201);
+    } catch (\Exception $e) {
+        // Handle any exceptions that occur during the process
+        return response()->json([
+            'message' => 'Failed to add details',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
 
 
     // signup
@@ -1227,6 +1281,7 @@ class CustomerController extends Controller
             '*.Categ_ID' => 'required|numeric',
             '*.Price' => 'required|numeric',
             '*.Qty' => 'required|numeric',
+            '*.Weight' => 'required|numeric',
             '*.Transac_ID' => 'required|numeric',
         ]);
 

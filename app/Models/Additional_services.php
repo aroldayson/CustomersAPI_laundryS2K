@@ -14,6 +14,7 @@ class Additional_services extends Model
         'AddService_ID',
         'Transac_ID',
         'AddService_name',
-        'AddService_price'
+        'AddService_price',
+        'CustAdd_ID'
     ];
 }

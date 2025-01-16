@@ -48,6 +48,8 @@ Route::get('/fetchaddress/{id}',[CustomerController::class,'fetchaddress']);
 Route::post('/updateaddress',[CustomerController::class,'updateaddress']);
 Route::post('/addcateg', [CustomerController::class, 'addcateg']);
 Route::delete('/deleteCateg/{id}',[CustomerController::class,'deleteCateg']);
+Route::delete('/deleteServices/{id}',[CustomerController::class,'deleteServices']);
+Route::post('/adddetails', [CustomerController::class, 'adddetails']);
 
 
 //customer - transactions
